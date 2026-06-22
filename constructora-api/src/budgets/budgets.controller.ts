@@ -1,0 +1,94 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { TenantGuard } from '../common/guards/tenant.guard';
+import { CurrentTenant } from '../common/decorators/current-tenant.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { BudgetsService } from './budgets.service';
+import { CreateBudgetDto } from './dto/create-budget.dto';
+import { UpdateBudgetDto } from './dto/update-budget.dto';
+import { UpdateBudgetStatusDto } from './dto/update-budget-status.dto';
+import { ListBudgetsQueryDto } from './dto/list-budgets-query.dto';
+
+@ApiTags('Budgets')
+@ApiBearerAuth('JWT-auth')
+@ApiSecurity('X-Tenant-ID')
+@Controller('budgets')
+@UseGuards(JwtAuthGuard, TenantGuard)
+export class BudgetsController {
+  constructor(private readonly budgetsService: BudgetsService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Create a budget for the current tenant' })
+  @ApiResponse({ status: 201, description: 'Budget created successfully' })
+  async create(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: { sub: string },
+    @Body() dto: CreateBudgetDto,
+  ) {
+    return this.budgetsService.create(tenantId, dto, user.sub);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List budgets for the current tenant' })
+  @ApiResponse({ status: 200, description: 'Paginated budget list' })
+  async findAll(@CurrentTenant() tenantId: string, @Query() query: ListBudgetsQueryDto) {
+    return this.budgetsService.findAll(tenantId, query);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a budget by ID for the current tenant' })
+  @ApiResponse({ status: 200, description: 'Budget details' })
+  @ApiResponse({ status: 404, description: 'Budget not found' })
+  async findOne(@CurrentTenant() tenantId: string, @Param('id') id: string) {
+    return this.budgetsService.findOne(tenantId, id);
+  }
+
+  @Patch(':id/status')
+  @ApiOperation({ summary: 'Update budget status for the current tenant' })
+  @ApiResponse({ status: 200, description: 'Budget status updated successfully' })
+  @ApiResponse({ status: 404, description: 'Budget not found' })
+  async updateStatus(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: { sub: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateBudgetStatusDto,
+  ) {
+    return this.budgetsService.updateStatus(tenantId, id, dto, user.sub);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a budget for the current tenant' })
+  @ApiResponse({ status: 200, description: 'Budget updated successfully' })
+  @ApiResponse({ status: 404, description: 'Budget not found' })
+  async update(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: { sub: string },
+    @Param('id') id: string,
+    @Body() dto: UpdateBudgetDto,
+  ) {
+    return this.budgetsService.update(tenantId, id, dto, user.sub);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a budget for the current tenant' })
+  @ApiResponse({ status: 200, description: 'Budget deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Budget not found' })
+  async remove(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: { sub: string },
+    @Param('id') id: string,
+  ) {
+    return this.budgetsService.remove(tenantId, id, user.sub);
+  }
+}

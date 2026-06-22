@@ -1,0 +1,50 @@
+# Root .gitignore for the constructora monorepo (constructora-app + constructora-api).
+# Patterns here apply repo-wide; each app also keeps its own .gitignore.
+
+# ---- Dependencies ----
+node_modules/
+/.pnp
+.pnp.js
+
+# ---- Environment variables / secrets ----
+.env*
+!.env.example
+
+# ---- Local debug artifacts (presigned R2 URLs, test payloads) ----
+r2-*.txt
+
+# ---- Build outputs ----
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---- Testing ----
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+
+# ---- Keys / certs ----
+*.pem
+*.key
+*.crt
+*.p12
+
+# ---- Third-party tooling ----
+.vercel
+.clerk/

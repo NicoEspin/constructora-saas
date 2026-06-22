@@ -1,0 +1,668 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ProjectStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectStageStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  PAUSED
+}
+
+enum ProjectIncidentCategory {
+  WEATHER
+  SUPPLIER
+  CLIENT
+  PERMIT
+  MATERIALS
+  WORKFORCE
+  TECHNICAL
+  SAFETY
+  OTHER
+}
+
+enum ProjectIncomeStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum ExpenseStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  DEBIT_CARD
+  CREDIT_CARD
+  CHECK
+  OTHER
+}
+
+enum BudgetStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum MeasurementUnit {
+  UNIT
+  M2
+  M3
+  LINEAR_METER
+  KG
+  LITER
+  BAG
+  ROLL
+  HOUR
+  DAY
+}
+
+enum BudgetItemCategory {
+  MATERIAL
+  LABOR
+  TOOL
+  EQUIPMENT
+  TRANSPORT
+  OUTSOURCED_SERVICE
+  ADMINISTRATION
+  EXTRA
+  OTHER
+}
+
+enum AttachmentKind {
+  INVOICE
+  RECEIPT
+  PAYMENT_PROOF
+  PROGRESS_PHOTO
+  PLAN
+  CONTRACT
+  SIGNED_BUDGET
+  CLIENT_DOCUMENT
+  OTHER
+}
+
+enum DocumentPdfType {
+  BUDGET
+  PROJECT_OPERATIONAL_REPORT
+  PROJECT_EXECUTIVE_REPORT
+}
+
+enum DocumentPdfLayout {
+  CLASSIC
+  ACCENT
+  COMPACT
+}
+
+enum DocumentPdfLogoSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+model Tenant {
+  id                        String                     @id @default(uuid())
+  name                      String
+  slug                      String                     @unique
+  plan                      Plan                       @default(FREE)
+  status                    TenantStatus               @default(ACTIVE)
+  logoAttachmentId          String?
+  memberships               Membership[]
+  auditLogs                 AuditLog[]
+  refreshTokens             RefreshToken[]
+  featureFlags              FeatureFlag[]
+  clients                   Client[]
+  suppliers                 Supplier[]
+  materials                 Material[]
+  projects                  Project[]
+  projectStages             ProjectStage[]
+  projectTemplates          ProjectTemplate[]
+  projectTemplateStages     ProjectTemplateStage[]
+  projectStageTasks         ProjectStageTask[]
+  projectTemplateStageTasks ProjectTemplateStageTask[]
+  expenseCategories         ExpenseCategory[]
+  expenses                  Expense[]
+  budgets                   Budget[]
+  budgetItems               BudgetItem[]
+  projectIncomes            ProjectIncome[]
+  projectIncidents          ProjectIncident[]
+  attachments               Attachment[]
+  documentPdfSettings       DocumentPdfSetting[]
+  logoAttachment            Attachment?                @relation("TenantLogo", fields: [logoAttachmentId], references: [id])
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+
+  @@index([logoAttachmentId])
+}
+
+model User {
+  id                   String         @id @default(uuid())
+  email                String         @unique
+  hashedPassword       String
+  displayName          String?
+  isEmailVerified      Boolean        @default(false)
+  memberships          Membership[]
+  auditLogs            AuditLog[]
+  refreshTokens        RefreshToken[]
+  managedProjects      Project[]      @relation("ProjectManager")
+  managedProjectStages ProjectStage[] @relation("ProjectStageManager")
+  createdExpenses      Expense[]      @relation("ExpenseCreator")
+  uploadedAttachments  Attachment[]   @relation("AttachmentUploader")
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  role      Role     @default(MEMBER)
+  tenantId  String
+  userId    String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String
+  metadata  Json?
+  tenantId  String
+  userId    String?
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  tokenHash String
+  tenantId  String?
+  userId    String
+  tenant    Tenant?   @relation(fields: [tenantId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+  revokedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String
+  name        String
+  description String?
+  enabled     Boolean  @default(false)
+  tenantId    String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  metadata    Json? // For percentage rollouts, A/B tests, etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([key, tenantId])
+  @@index([tenantId])
+  @@index([key])
+}
+
+model Client {
+  id          String       @id @default(uuid())
+  tenantId    String
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  taxId       String?
+  notes       String?
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  projects    Project[]
+  budgets     Budget[]
+  attachments Attachment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+}
+
+model Supplier {
+  id        String     @id @default(uuid())
+  tenantId  String
+  name      String
+  trade     String?
+  phone     String?
+  email     String?
+  address   String?
+  taxId     String?
+  offerings String?
+  notes     String?
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  materials Material[]
+  expenses  Expense[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+}
+
+model Material {
+  id                 String          @id @default(uuid())
+  tenantId           String
+  supplierId         String?
+  name               String
+  category           String?
+  unit               MeasurementUnit
+  estimatedUnitPrice Decimal?        @db.Decimal(12, 2)
+  lastPriceUpdatedAt DateTime?
+  notes              String?
+  tenant             Tenant          @relation(fields: [tenantId], references: [id])
+  supplier           Supplier?       @relation(fields: [supplierId], references: [id])
+  budgetItems        BudgetItem[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, name])
+  @@index([supplierId])
+}
+
+model ProjectTemplate {
+  id          String                 @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id])
+  stages      ProjectTemplateStage[]
+  projects    Project[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model ProjectTemplateStage {
+  id                String                     @id @default(uuid())
+  tenantId          String
+  projectTemplateId String
+  name              String
+  description       String?
+  position          Int
+  weightPercent     Int?
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id])
+  projectTemplate   ProjectTemplate            @relation(fields: [projectTemplateId], references: [id])
+  projectStages     ProjectStage[]
+  tasks             ProjectTemplateStageTask[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@unique([projectTemplateId, position])
+  @@index([tenantId])
+  @@index([projectTemplateId])
+}
+
+model ProjectTemplateStageTask {
+  id                     String               @id @default(uuid())
+  tenantId               String
+  projectTemplateStageId String
+  title                  String
+  position               Int
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id])
+  projectTemplateStage   ProjectTemplateStage @relation(fields: [projectTemplateStageId], references: [id], onDelete: Cascade)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  @@unique([projectTemplateStageId, position])
+  @@index([tenantId])
+  @@index([projectTemplateStageId])
+}
+
+model Project {
+  id                String            @id @default(uuid())
+  tenantId          String
+  clientId          String?
+  projectTemplateId String?
+  managerUserId     String?
+  name              String
+  location          String?
+  startDate         DateTime?
+  actualStartDate   DateTime?
+  estimatedEndDate  DateTime?
+  actualEndDate     DateTime?
+  status            ProjectStatus     @default(PENDING)
+  assignedBudget    Decimal?          @db.Decimal(12, 2)
+  accumulatedCost   Decimal?          @db.Decimal(12, 2)
+  progressPercent   Int               @default(0)
+  notes             String?
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  client            Client?           @relation(fields: [clientId], references: [id])
+  projectTemplate   ProjectTemplate?  @relation(fields: [projectTemplateId], references: [id])
+  manager           User?             @relation("ProjectManager", fields: [managerUserId], references: [id])
+  stages            ProjectStage[]
+  expenses          Expense[]
+  budgets           Budget[]
+  incomes           ProjectIncome[]
+  incidents         ProjectIncident[]
+  attachments       Attachment[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([projectTemplateId])
+  @@index([managerUserId])
+  @@index([tenantId, status])
+}
+
+model ProjectIncome {
+  id            String              @id @default(uuid())
+  tenantId      String
+  projectId     String
+  budgetId      String?
+  receivedAt    DateTime            @default(now())
+  amount        Decimal             @db.Decimal(12, 2)
+  status        ProjectIncomeStatus @default(CONFIRMED)
+  description   String?
+  paymentMethod PaymentMethod?
+  reference     String?
+  notes         String?
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  project       Project             @relation(fields: [projectId], references: [id])
+  budget        Budget?             @relation(fields: [budgetId], references: [id])
+  attachments   Attachment[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([budgetId])
+  @@index([tenantId, projectId])
+  @@index([tenantId, status])
+  @@index([tenantId, receivedAt])
+}
+
+model ProjectIncident {
+  id             String                   @id @default(uuid())
+  tenantId       String
+  projectId      String
+  projectStageId String?
+  incidentDate   DateTime                 @default(now())
+  reason         String
+  category       ProjectIncidentCategory?
+  delayDays      Int                      @default(0)
+  delayHours     Int                      @default(0)
+  notes          String?
+  tenant         Tenant                   @relation(fields: [tenantId], references: [id])
+  project        Project                  @relation(fields: [projectId], references: [id])
+  projectStage   ProjectStage?            @relation(fields: [projectStageId], references: [id])
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([projectStageId])
+  @@index([tenantId, category])
+  @@index([tenantId, projectId])
+  @@index([tenantId, incidentDate])
+}
+
+model ProjectStage {
+  id                     String                @id @default(uuid())
+  tenantId               String
+  projectId              String
+  projectTemplateStageId String?
+  managerUserId          String?
+  name                   String
+  description            String?
+  status                 ProjectStageStatus    @default(PENDING)
+  progressPercent        Int                   @default(0)
+  weightPercent          Int?
+  position               Int
+  estimatedStartDate     DateTime?
+  estimatedEndDate       DateTime?
+  actualStartDate        DateTime?
+  actualEndDate          DateTime?
+  notes                  String?
+  tenant                 Tenant                @relation(fields: [tenantId], references: [id])
+  project                Project               @relation(fields: [projectId], references: [id])
+  projectTemplateStage   ProjectTemplateStage? @relation(fields: [projectTemplateStageId], references: [id])
+  manager                User?                 @relation("ProjectStageManager", fields: [managerUserId], references: [id])
+  tasks                  ProjectStageTask[]
+  expenses               Expense[]
+  incidents              ProjectIncident[]
+  attachments            Attachment[]
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  @@unique([projectId, position])
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([projectTemplateStageId])
+  @@index([managerUserId])
+  @@index([tenantId, status])
+}
+
+model ProjectStageTask {
+  id             String       @id @default(uuid())
+  tenantId       String
+  projectStageId String
+  title          String
+  completed      Boolean      @default(false)
+  position       Int
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  projectStage   ProjectStage @relation(fields: [projectStageId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([projectStageId, position])
+  @@index([tenantId])
+  @@index([projectStageId])
+  @@index([tenantId, completed])
+}
+
+model ExpenseCategory {
+  id          String    @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  color       String?
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  expenses    Expense[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model Expense {
+  id              String          @id @default(uuid())
+  tenantId        String
+  categoryId      String
+  projectId       String?
+  projectStageId  String?
+  supplierId      String?
+  createdByUserId String?
+  expenseDate     DateTime        @default(now())
+  dueDate         DateTime?
+  amount          Decimal         @db.Decimal(12, 2)
+  description     String?
+  paymentMethod   PaymentMethod?
+  status          ExpenseStatus   @default(PENDING)
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  category        ExpenseCategory @relation(fields: [categoryId], references: [id])
+  project         Project?        @relation(fields: [projectId], references: [id])
+  projectStage    ProjectStage?   @relation(fields: [projectStageId], references: [id])
+  supplier        Supplier?       @relation(fields: [supplierId], references: [id])
+  createdByUser   User?           @relation("ExpenseCreator", fields: [createdByUserId], references: [id])
+  attachments     Attachment[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([categoryId])
+  @@index([projectId])
+  @@index([projectStageId])
+  @@index([supplierId])
+  @@index([createdByUserId])
+  @@index([tenantId, status])
+  @@index([tenantId, status, dueDate])
+}
+
+model Budget {
+  id                     String          @id @default(uuid())
+  tenantId               String
+  clientId               String
+  projectId              String?
+  name                   String
+  workType               String?
+  description            String?
+  issuedAt               DateTime        @default(now())
+  expiresAt              DateTime?
+  status                 BudgetStatus    @default(DRAFT)
+  subtotalAmount         Decimal         @db.Decimal(12, 2)
+  discountAmount         Decimal         @default(0) @db.Decimal(12, 2)
+  taxAmount              Decimal         @default(0) @db.Decimal(12, 2)
+  profitAmount           Decimal         @default(0) @db.Decimal(12, 2)
+  totalAmount            Decimal         @db.Decimal(12, 2)
+  commercialTerms        String?
+  paymentTerms           String?
+  estimatedExecutionTime String?
+  tenant                 Tenant          @relation(fields: [tenantId], references: [id])
+  client                 Client          @relation(fields: [clientId], references: [id])
+  project                Project?        @relation(fields: [projectId], references: [id])
+  items                  BudgetItem[]
+  projectIncomes         ProjectIncome[]
+  attachments            Attachment[]
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([tenantId, status])
+}
+
+model BudgetItem {
+  id          String             @id @default(uuid())
+  tenantId    String
+  budgetId    String
+  materialId  String?
+  category    BudgetItemCategory
+  name        String
+  description String?
+  quantity    Decimal            @db.Decimal(12, 2)
+  unit        MeasurementUnit
+  unitPrice   Decimal            @db.Decimal(12, 2)
+  subtotal    Decimal            @db.Decimal(12, 2)
+  position    Int
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  budget      Budget             @relation(fields: [budgetId], references: [id])
+  material    Material?          @relation(fields: [materialId], references: [id])
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([budgetId, position])
+  @@index([tenantId])
+  @@index([budgetId])
+  @@index([materialId])
+}
+
+model Attachment {
+  id               String               @id @default(uuid())
+  tenantId         String
+  uploadedByUserId String?
+  clientId         String?
+  projectId        String?
+  projectStageId   String?
+  expenseId        String?
+  budgetId         String?
+  projectIncomeId  String?
+  kind             AttachmentKind       @default(OTHER)
+  fileName         String
+  storageKey       String
+  mimeType         String?
+  fileSizeBytes    Int?
+  notes            String?
+  tenant           Tenant               @relation(fields: [tenantId], references: [id])
+  uploadedByUser   User?                @relation("AttachmentUploader", fields: [uploadedByUserId], references: [id])
+  client           Client?              @relation(fields: [clientId], references: [id])
+  project          Project?             @relation(fields: [projectId], references: [id])
+  projectStage     ProjectStage?        @relation(fields: [projectStageId], references: [id])
+  expense          Expense?             @relation(fields: [expenseId], references: [id])
+  budget           Budget?              @relation(fields: [budgetId], references: [id])
+  projectIncome    ProjectIncome?       @relation(fields: [projectIncomeId], references: [id])
+  documentPdfLogos DocumentPdfSetting[] @relation("DocumentPdfSettingLogo")
+  tenantLogos      Tenant[]             @relation("TenantLogo")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  @@index([tenantId])
+  @@index([uploadedByUserId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([projectStageId])
+  @@index([expenseId])
+  @@index([budgetId])
+  @@index([projectIncomeId])
+}
+
+model DocumentPdfSetting {
+  id               String              @id @default(uuid())
+  tenantId         String
+  documentType     DocumentPdfType
+  layout           DocumentPdfLayout   @default(CLASSIC)
+  primaryColor     String
+  logoAttachmentId String?
+  logoSize         DocumentPdfLogoSize @default(MEDIUM)
+  tenant           Tenant              @relation(fields: [tenantId], references: [id])
+  logoAttachment   Attachment?         @relation("DocumentPdfSettingLogo", fields: [logoAttachmentId], references: [id])
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@unique([tenantId, documentType])
+  @@index([tenantId])
+  @@index([logoAttachmentId])
+}
