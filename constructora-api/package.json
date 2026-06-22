@@ -10,7 +10,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "test": "jest",
+    "test": "jest --testPathPatterns=\"src/.*\\.spec\\.ts$\" && jest --runInBand --testPathPatterns=\"test/.*\\.e2e-spec\\.ts$\"",
     "test:watch": "jest --watch",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",

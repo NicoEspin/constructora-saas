@@ -34,17 +34,27 @@ describe('Clients (e2e)', () => {
 
   afterAll(async () => {
     await prisma.$transaction([
+      prisma.documentPdfSetting.deleteMany({}),
+      prisma.projectTemplateStageTask.deleteMany({}),
+      prisma.projectStageTask.deleteMany({}),
       prisma.budgetItem.deleteMany({}),
+      prisma.attachment.deleteMany({}),
+      prisma.projectIncome.deleteMany({}),
+      prisma.projectIncident.deleteMany({}),
+      prisma.expense.deleteMany({}),
       prisma.budget.deleteMany({}),
       prisma.projectStage.deleteMany({}),
+      prisma.expenseCategory.deleteMany({}),
       prisma.project.deleteMany({}),
+      prisma.material.deleteMany({}),
       prisma.projectTemplateStage.deleteMany({}),
       prisma.projectTemplate.deleteMany({}),
+      prisma.supplier.deleteMany({}),
       prisma.client.deleteMany({}),
       prisma.refreshToken.deleteMany({}),
       prisma.auditLog.deleteMany({}),
       prisma.membership.deleteMany({}),
-      prisma.documentPdfSetting.deleteMany({}),
+      prisma.featureFlag.deleteMany({}),
       prisma.tenant.deleteMany({}),
       prisma.user.deleteMany({}),
     ]);
@@ -52,17 +62,27 @@ describe('Clients (e2e)', () => {
   });
 
   beforeEach(async () => {
+    await prisma.documentPdfSetting.deleteMany({});
+    await prisma.projectTemplateStageTask.deleteMany({});
+    await prisma.projectStageTask.deleteMany({});
     await prisma.budgetItem.deleteMany({});
+    await prisma.attachment.deleteMany({});
+    await prisma.projectIncome.deleteMany({});
+    await prisma.projectIncident.deleteMany({});
+    await prisma.expense.deleteMany({});
     await prisma.budget.deleteMany({});
     await prisma.projectStage.deleteMany({});
+    await prisma.expenseCategory.deleteMany({});
     await prisma.project.deleteMany({});
+    await prisma.material.deleteMany({});
     await prisma.projectTemplateStage.deleteMany({});
     await prisma.projectTemplate.deleteMany({});
+    await prisma.supplier.deleteMany({});
     await prisma.client.deleteMany({});
     await prisma.refreshToken.deleteMany({});
     await prisma.auditLog.deleteMany({});
     await prisma.membership.deleteMany({});
-    await prisma.documentPdfSetting.deleteMany({});
+    await prisma.featureFlag.deleteMany({});
     await prisma.tenant.deleteMany({});
     await prisma.user.deleteMany({});
   });

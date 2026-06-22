@@ -40,6 +40,7 @@ describe('Project stages (e2e)', () => {
   });
 
   afterAll(async () => {
+    await cleanupDatabase();
     await app.close();
   });
 
@@ -48,24 +49,27 @@ describe('Project stages (e2e)', () => {
   });
 
   async function cleanupDatabase() {
-    await prisma.projectIncident.deleteMany({});
-    await prisma.projectIncome.deleteMany({});
-    await prisma.attachment.deleteMany({});
-    await prisma.expense.deleteMany({});
-    await prisma.expenseCategory.deleteMany({});
-    await prisma.budgetItem.deleteMany({});
-    await prisma.budget.deleteMany({});
-    await prisma.projectStageTask.deleteMany({});
-    await prisma.projectStage.deleteMany({});
-    await prisma.project.deleteMany({});
+    await prisma.documentPdfSetting.deleteMany({});
     await prisma.projectTemplateStageTask.deleteMany({});
+    await prisma.projectStageTask.deleteMany({});
+    await prisma.budgetItem.deleteMany({});
+    await prisma.attachment.deleteMany({});
+    await prisma.projectIncome.deleteMany({});
+    await prisma.projectIncident.deleteMany({});
+    await prisma.expense.deleteMany({});
+    await prisma.budget.deleteMany({});
+    await prisma.projectStage.deleteMany({});
+    await prisma.expenseCategory.deleteMany({});
+    await prisma.project.deleteMany({});
+    await prisma.material.deleteMany({});
     await prisma.projectTemplateStage.deleteMany({});
     await prisma.projectTemplate.deleteMany({});
+    await prisma.supplier.deleteMany({});
     await prisma.client.deleteMany({});
     await prisma.refreshToken.deleteMany({});
     await prisma.auditLog.deleteMany({});
     await prisma.membership.deleteMany({});
-    await prisma.documentPdfSetting.deleteMany({});
+    await prisma.featureFlag.deleteMany({});
     await prisma.tenant.deleteMany({});
     await prisma.user.deleteMany({});
   }
