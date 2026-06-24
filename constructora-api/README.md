@@ -139,6 +139,8 @@ For applying existing migrations to an existing database without creating new mi
 npx prisma migrate deploy
 ```
 
+If your production platform uses a connection pooler or proxy, keep `DATABASE_URL` for the running app and set `DIRECT_URL` to a direct PostgreSQL connection for Prisma migrations.
+
 Run seed only when you explicitly want to load seed data.
 
 ### 4. Start Development Server
@@ -155,6 +157,45 @@ npm run start:dev
 ```bash
 docker-compose up -d
 ```
+
+## Render Production
+
+For Render, the safe production setup is to run Prisma migrations in a pre-deploy step and keep the app startup command limited to starting the API.
+
+### Required rules
+
+- Use `npx prisma migrate deploy` only. Never use `prisma migrate dev` or `prisma db push` in production.
+- Keep `DATABASE_URL` for the application runtime connection.
+- Set `DIRECT_URL` to a direct PostgreSQL connection string for migrations.
+- Prefer additive migrations first. For destructive schema changes, use an expand/contract rollout instead of dropping columns or tables in the same deploy.
+
+### Render dashboard settings
+
+If the Render service root directory is `constructora-api`:
+
+```text
+Pre-Deploy Command: sh ./scripts/render-predeploy.sh
+Health Check Path: /api/health/readiness
+Auto-Deploy: After CI Checks Pass
+```
+
+If the Render service root directory is the monorepo root:
+
+```text
+Pre-Deploy Command: cd constructora-api && sh ./scripts/render-predeploy.sh
+Health Check Path: /api/health/readiness
+Auto-Deploy: After CI Checks Pass
+```
+
+### Why this is the safe setup
+
+- Render runs the pre-deploy command before switching traffic to the new instance.
+- If migrations fail, the deploy fails and Render keeps serving the previous healthy version.
+- The readiness probe only goes green when the API can talk to PostgreSQL.
+
+### Operational note
+
+This repository does not currently version the live Render service configuration, so the dashboard must still be updated once to point at the pre-deploy script above.
 
 ## 📁 Project Structure
 
