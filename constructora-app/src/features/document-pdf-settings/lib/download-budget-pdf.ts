@@ -130,6 +130,40 @@ function sanitizeCloneForPdfCapture(element: HTMLElement) {
   return clone;
 }
 
+async function waitForImagesToLoad(element: HTMLElement) {
+  const images = Array.from(element.querySelectorAll<HTMLImageElement>('img')).filter(
+    (image) => Boolean(image.currentSrc || image.src),
+  );
+
+  await Promise.all(
+    images.map(async (image) => {
+      if (image.complete) {
+        return;
+      }
+
+      try {
+        await image.decode();
+        return;
+      } catch {
+        if (image.complete) {
+          return;
+        }
+      }
+
+      await new Promise<void>((resolve) => {
+        const cleanup = () => {
+          image.removeEventListener('load', cleanup);
+          image.removeEventListener('error', cleanup);
+          resolve();
+        };
+
+        image.addEventListener('load', cleanup, { once: true });
+        image.addEventListener('error', cleanup, { once: true });
+      });
+    }),
+  );
+}
+
 export async function downloadElementAsPdf(element: HTMLElement, fileName: string) {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import('html2canvas'),
@@ -142,6 +176,8 @@ export async function downloadElementAsPdf(element: HTMLElement, fileName: strin
   let canvas: HTMLCanvasElement;
 
   try {
+    await waitForImagesToLoad(sanitizedClone);
+
     canvas = await html2canvas(sanitizedClone, {
       scale: 2,
       backgroundColor: '#ffffff',
