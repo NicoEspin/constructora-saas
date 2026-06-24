@@ -5,16 +5,49 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
 
+function normalizeOrigin(origin: string): string {
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return origin.replace(/\/+$/, '');
+  }
+}
+
+function expandAllowedOrigins(origin: string): string[] {
+  const normalizedOrigin = normalizeOrigin(origin);
+
+  try {
+    const url = new URL(normalizedOrigin);
+    const expandedOrigins = new Set([url.origin]);
+
+    if (url.hostname.startsWith('www.')) {
+      const alternateUrl = new URL(url.origin);
+      alternateUrl.hostname = url.hostname.slice(4);
+      expandedOrigins.add(alternateUrl.origin);
+    } else if (!url.hostname.includes('localhost')) {
+      const alternateUrl = new URL(url.origin);
+      alternateUrl.hostname = `www.${url.hostname}`;
+      expandedOrigins.add(alternateUrl.origin);
+    }
+
+    return [...expandedOrigins];
+  } catch {
+    return [normalizedOrigin];
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const configuredOrigins =
     configService.get<string>('CORS_ORIGIN') || configService.get<string>('FRONTEND_URL');
-  const allowedOrigins = configuredOrigins
-    ?.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean) ?? (nodeEnv === 'production' ? [] : ['http://localhost:3000']);
+  const configuredOriginList =
+    configuredOrigins
+      ?.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? (nodeEnv === 'production' ? [] : ['http://localhost:3000']);
+  const allowedOrigins = new Set(configuredOriginList.flatMap(expandAllowedOrigins));
 
   app.enableCors({
     credentials: true,
@@ -22,7 +55,7 @@ async function bootstrap() {
       origin: string | undefined,
       callback: (error: Error | null, allow?: boolean) => void,
     ) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.has(normalizeOrigin(origin))) {
         callback(null, true);
         return;
       }
