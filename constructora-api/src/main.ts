@@ -6,7 +6,31 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+  const nodeEnv = configService.get<string>('NODE_ENV', 'development');
+  const configuredOrigins =
+    configService.get<string>('CORS_ORIGIN') || configService.get<string>('FRONTEND_URL');
+  const allowedOrigins = configuredOrigins
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? (nodeEnv === 'production' ? [] : ['http://localhost:3000']);
+
+  app.enableCors({
+    credentials: true,
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
+  });
+
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({
@@ -61,11 +85,10 @@ async function bootstrap() {
     },
   });
 
-  const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3000);
-  await app.listen(port);
-  console.info(`API listening on http://localhost:${port}`);
-  console.info(`Swagger docs at http://localhost:${port}/docs`);
+  const port = Number(process.env.PORT ?? configService.get<string>('PORT') ?? 3000);
+  await app.listen(port, '0.0.0.0');
+  console.info(`API listening on http://0.0.0.0:${port}`);
+  console.info(`Swagger docs at http://0.0.0.0:${port}/docs`);
 }
 
 bootstrap();
