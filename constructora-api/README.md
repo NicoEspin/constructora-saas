@@ -160,7 +160,10 @@ docker-compose up -d
 
 ## Render Production
 
-For Render, the safe production setup is to run Prisma migrations in a pre-deploy step and keep the app startup command limited to starting the API.
+For Render, Prisma migrations must run before the API serves traffic. This repository now supports both Render setups:
+
+- Paid plan or services with pre-deploy support: run migrations in the pre-deploy step.
+- Free plan: the container startup runs `prisma migrate deploy` first and only starts the API if migrations succeed.
 
 ### Required rules
 
@@ -170,6 +173,25 @@ For Render, the safe production setup is to run Prisma migrations in a pre-deplo
 - Prefer additive migrations first. For destructive schema changes, use an expand/contract rollout instead of dropping columns or tables in the same deploy.
 
 ### Render dashboard settings
+
+#### Free plan
+
+If you are staying on Render Free, do not configure a pre-deploy command for the API service.
+
+```text
+Pre-Deploy Command: <leave empty>
+Health Check Path: /api/health/readiness
+Auto-Deploy: After CI Checks Pass
+```
+
+Startup behavior on Free plan:
+
+- Render starts the Docker container.
+- `./scripts/render-start.sh` runs `./scripts/render-predeploy.sh`.
+- `prisma migrate deploy` must succeed before `node dist/main.js` starts.
+- If migrations fail, the container exits and the deploy stays unhealthy instead of serving an app that crashes on first query.
+
+#### Paid plan / pre-deploy supported
 
 If the Render service root directory is `constructora-api`:
 
@@ -192,6 +214,12 @@ Auto-Deploy: After CI Checks Pass
 - Render runs the pre-deploy command before switching traffic to the new instance.
 - If migrations fail, the deploy fails and Render keeps serving the previous healthy version.
 - The readiness probe only goes green when the API can talk to PostgreSQL.
+
+For Free plan specifically:
+
+- This is safe for a single-instance service because migrations and app startup happen in the same container lifecycle.
+- The tradeoff is that a failed migration prevents the container from booting, so there is no zero-downtime rollout behavior like a paid pre-deploy flow.
+- Avoid destructive migrations during active use; use additive or expand/contract changes when possible.
 
 ### Operational note
 
@@ -231,61 +259,61 @@ src/
 
 ### Authentication
 
-| Method | Endpoint              | Description            |
-|--------|----------------------|------------------------|
-| POST   | `/api/auth/register` | Register new user      |
-| POST   | `/api/auth/login`    | Login, get tokens      |
-| POST   | `/api/auth/refresh`  | Refresh access token   |
-| POST   | `/api/auth/logout`   | Revoke refresh token   |
+| Method | Endpoint                  | Description          |
+| ------ | ------------------------- | -------------------- |
+| POST   | `/api/auth/register`      | Register new user    |
+| POST   | `/api/auth/login`         | Login, get tokens    |
+| POST   | `/api/auth/refresh`       | Refresh access token |
+| POST   | `/api/auth/logout`        | Revoke refresh token |
 | POST   | `/api/auth/switch-tenant` | Switch active tenant |
 
 ### Tenants
 
-| Method | Endpoint                     | Description         |
-|--------|------------------------------|---------------------|
-| POST   | `/api/tenants`               | Create tenant       |
-| GET    | `/api/tenants/current`       | Get current tenant  |
-| PATCH  | `/api/tenants/current`       | Update tenant       |
-| GET    | `/api/tenants/current/members` | List members      |
+| Method | Endpoint                       | Description        |
+| ------ | ------------------------------ | ------------------ |
+| POST   | `/api/tenants`                 | Create tenant      |
+| GET    | `/api/tenants/current`         | Get current tenant |
+| PATCH  | `/api/tenants/current`         | Update tenant      |
+| GET    | `/api/tenants/current/members` | List members       |
 
 ### Memberships
 
-| Method | Endpoint                  | Description              |
-|--------|--------------------------|--------------------------|
-| POST   | `/api/memberships/invite` | Invite user to tenant   |
-| PATCH  | `/api/memberships/:id`   | Update member role       |
-| DELETE | `/api/memberships/:id`   | Remove member            |
-| DELETE | `/api/memberships/leave` | Leave current tenant     |
+| Method | Endpoint                  | Description           |
+| ------ | ------------------------- | --------------------- |
+| POST   | `/api/memberships/invite` | Invite user to tenant |
+| PATCH  | `/api/memberships/:id`    | Update member role    |
+| DELETE | `/api/memberships/:id`    | Remove member         |
+| DELETE | `/api/memberships/leave`  | Leave current tenant  |
 
 ### Users
 
-| Method | Endpoint        | Description       |
-|--------|----------------|-------------------|
-| GET    | `/api/users/me` | Get profile       |
-| PATCH  | `/api/users/me` | Update profile    |
+| Method | Endpoint        | Description    |
+| ------ | --------------- | -------------- |
+| GET    | `/api/users/me` | Get profile    |
+| PATCH  | `/api/users/me` | Update profile |
 
 ### Billing
 
-| Method | Endpoint                      | Description        |
-|--------|------------------------------|--------------------|
-| GET    | `/api/billing`               | Billing overview   |
-| GET    | `/api/billing/limits`        | Plan limits        |
+| Method | Endpoint                       | Description      |
+| ------ | ------------------------------ | ---------------- |
+| GET    | `/api/billing`                 | Billing overview |
+| GET    | `/api/billing/limits`          | Plan limits      |
 | GET    | `/api/billing/quota/:resource` | Check quota      |
 
 ### Feature Flags
 
-| Method | Endpoint                                  | Description                    |
-|--------|------------------------------------------|--------------------------------|
-| GET    | `/api/feature-flags`                     | Get all flags for tenant       |
-| GET    | `/api/feature-flags/:key/check`          | Check if feature enabled       |
-| POST   | `/api/feature-flags/overrides`           | Create tenant override         |
-| DELETE | `/api/feature-flags/overrides/:key`      | Delete tenant override         |
+| Method | Endpoint                            | Description              |
+| ------ | ----------------------------------- | ------------------------ |
+| GET    | `/api/feature-flags`                | Get all flags for tenant |
+| GET    | `/api/feature-flags/:key/check`     | Check if feature enabled |
+| POST   | `/api/feature-flags/overrides`      | Create tenant override   |
+| DELETE | `/api/feature-flags/overrides/:key` | Delete tenant override   |
 
 ### Audit Logs
 
-| Method | Endpoint       | Description       |
-|--------|---------------|-------------------|
-| GET    | `/api/audit`  | List audit logs   |
+| Method | Endpoint     | Description     |
+| ------ | ------------ | --------------- |
+| GET    | `/api/audit` | List audit logs |
 
 > 📖 **Full API documentation available at** `/docs` **(Swagger UI)**
 
@@ -301,6 +329,7 @@ src/
 ### Protected Models
 
 These tables are automatically scoped by `tenant_id`:
+
 - `Membership`
 - `AuditLog`
 - `RefreshToken`
@@ -308,11 +337,11 @@ These tables are automatically scoped by `tenant_id`:
 
 ## 🛡️ RBAC Permissions
 
-| Role   | Permissions |
-|--------|-------------|
+| Role   | Permissions                                                                                                                        |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | OWNER  | `users.invite`, `users.manage`, `billing.read`, `billing.manage`, `tenant.update`, `audit.read`, `settings.read`, `settings.write` |
-| ADMIN  | `users.invite`, `users.manage`, `billing.read`, `audit.read`, `settings.read` |
-| MEMBER | (none) |
+| ADMIN  | `users.invite`, `users.manage`, `billing.read`, `audit.read`, `settings.read`                                                      |
+| MEMBER | (none)                                                                                                                             |
 
 ### Usage
 
