@@ -178,6 +178,10 @@ const projectStageInclude = {
 } satisfies Prisma.ProjectStageInclude;
 
 type PrismaTransaction = Prisma.TransactionClient;
+type PrismaProjectWriteClient = Pick<
+  PrismaTransaction,
+  'project' | 'projectStage' | 'projectStageTask' | 'projectTemplateStage'
+>;
 
 type SummaryMessage = {
   code: string;
@@ -210,37 +214,30 @@ export class ProjectsService {
       dto.managerUserId ?? null,
     );
 
-    const project = await this.prisma.$transaction(async (tx) => {
-      const createdProject = await tx.project.create({
-        data: {
-          tenantId,
-          clientId: dto.clientId ?? null,
-          projectTemplateId: dto.projectTemplateId ?? null,
-          managerUserId: dto.managerUserId ?? null,
-          name: this.requireTrimmedString(dto.name, 'Project name is required'),
-          location: this.normalizeOptionalString(dto.location),
-          startDate: dto.startDate ?? null,
-          actualStartDate: dto.actualStartDate ?? null,
-          estimatedEndDate: dto.estimatedEndDate ?? null,
-          actualEndDate: dto.actualEndDate ?? null,
-          status: dto.status ?? ProjectStatus.PENDING,
-          progressPercent: 0,
-          notes: this.normalizeOptionalString(dto.notes),
-        },
-      });
-
-      await this.materializeStagesFromTemplate(
-        tx,
+    const project = await this.prisma.project.create({
+      data: {
         tenantId,
-        createdProject.id,
-        dto.projectTemplateId ?? null,
-      );
-
-      return tx.project.findUniqueOrThrow({
-        where: { id: createdProject.id },
-        include: projectDetailsInclude,
-      });
+        clientId: dto.clientId ?? null,
+        projectTemplateId: dto.projectTemplateId ?? null,
+        managerUserId: dto.managerUserId ?? null,
+        name: this.requireTrimmedString(dto.name, 'Project name is required'),
+        location: this.normalizeOptionalString(dto.location),
+        startDate: dto.startDate ?? null,
+        actualStartDate: dto.actualStartDate ?? null,
+        estimatedEndDate: dto.estimatedEndDate ?? null,
+        actualEndDate: dto.actualEndDate ?? null,
+        status: dto.status ?? ProjectStatus.PENDING,
+        progressPercent: 0,
+        notes: this.normalizeOptionalString(dto.notes),
+      },
     });
+
+    await this.materializeStagesFromTemplate(
+      this.prisma,
+      tenantId,
+      project.id,
+      dto.projectTemplateId ?? null,
+    );
 
     await this.auditService.log({
       action: 'project.create',
@@ -640,18 +637,12 @@ export class ProjectsService {
       throw new BadRequestException('Project has no linked template');
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const createdStagesCount = await this.materializeStagesFromTemplate(
-        tx,
-        tenantId,
-        id,
-        project.projectTemplateId,
-      );
-
-      return {
-        createdStagesCount,
-      };
-    });
+    const createdStagesCount = await this.materializeStagesFromTemplate(
+      this.prisma,
+      tenantId,
+      id,
+      project.projectTemplateId,
+    );
 
     await this.auditService.log({
       action: 'project.template-apply',
@@ -662,13 +653,13 @@ export class ProjectsService {
       metadata: {
         projectTemplateId: project.projectTemplateId,
         mode: 'append',
-        createdStagesCount: result.createdStagesCount,
+        createdStagesCount,
       },
     });
 
     return {
       project: await this.findProjectOrThrow(tenantId, id),
-      createdStagesCount: result.createdStagesCount,
+      createdStagesCount,
     };
   }
 
@@ -755,25 +746,23 @@ export class ProjectsService {
           progressPercent: 0,
           notes: this.normalizeOptionalString(dto.notes),
         },
+        select: { id: true, name: true, assignedBudget: true },
       });
-
-      await this.materializeStagesFromTemplate(
-        tx,
-        tenantId,
-        createdProject.id,
-        dto.projectTemplateId ?? null,
-      );
 
       await tx.budget.update({
         where: { id: budget.id },
         data: { projectId: createdProject.id },
       });
 
-      return tx.project.findUniqueOrThrow({
-        where: { id: createdProject.id },
-        include: projectDetailsInclude,
-      });
+      return createdProject;
     });
+
+    await this.materializeStagesFromTemplate(
+      this.prisma,
+      tenantId,
+      project.id,
+      dto.projectTemplateId ?? null,
+    );
 
     await this.auditService.log({
       action: 'project.convert',
@@ -1245,7 +1234,7 @@ export class ProjectsService {
   }
 
   private async materializeStagesFromTemplate(
-    tx: PrismaTransaction,
+    db: PrismaProjectWriteClient,
     tenantId: string,
     projectId: string,
     projectTemplateId: string | null,
@@ -1254,7 +1243,7 @@ export class ProjectsService {
       return 0;
     }
 
-    const templateStages = await tx.projectTemplateStage.findMany({
+    const templateStages = await db.projectTemplateStage.findMany({
       where: { tenantId, projectTemplateId },
       orderBy: { position: 'asc' },
       select: {
@@ -1277,10 +1266,10 @@ export class ProjectsService {
       return 0;
     }
 
-    const positionOffset = (await this.findNextStagePosition(tx, tenantId, projectId)) - 1;
+    const positionOffset = (await this.findNextStagePosition(db, tenantId, projectId)) - 1;
 
     for (const stage of templateStages) {
-      const materializedStage = await tx.projectStage.create({
+      const materializedStage = await db.projectStage.create({
         data: {
           tenantId,
           projectId,
@@ -1300,19 +1289,23 @@ export class ProjectsService {
       });
 
       await this.replaceProjectStageTasks(
-        tx,
+        db,
         tenantId,
         materializedStage.id,
         stage.tasks.map((task) => ({ title: task.title, completed: false })),
       );
     }
 
-    await this.syncProjectProgress(tx, tenantId, projectId);
+    await this.syncProjectProgress(db, tenantId, projectId);
     return templateStages.length;
   }
 
-  private async findNextStagePosition(tx: PrismaTransaction, tenantId: string, projectId: string) {
-    const lastStage = await tx.projectStage.findFirst({
+  private async findNextStagePosition(
+    db: PrismaProjectWriteClient,
+    tenantId: string,
+    projectId: string,
+  ) {
+    const lastStage = await db.projectStage.findFirst({
       where: { tenantId, projectId },
       select: { position: true },
       orderBy: { position: 'desc' },
@@ -1322,13 +1315,13 @@ export class ProjectsService {
   }
 
   private async ensureStagePositionAvailable(
-    tx: PrismaTransaction,
+    db: PrismaProjectWriteClient,
     tenantId: string,
     projectId: string,
     position: number,
     stageIdToExclude?: string,
   ) {
-    const stage = await tx.projectStage.findFirst({
+    const stage = await db.projectStage.findFirst({
       where: {
         tenantId,
         projectId,
@@ -1343,15 +1336,19 @@ export class ProjectsService {
     }
   }
 
-  private async syncProjectProgress(tx: PrismaTransaction, tenantId: string, projectId: string) {
-    const stages = await tx.projectStage.findMany({
+  private async syncProjectProgress(
+    db: PrismaProjectWriteClient,
+    tenantId: string,
+    projectId: string,
+  ) {
+    const stages = await db.projectStage.findMany({
       where: { tenantId, projectId },
       select: { progressPercent: true, weightPercent: true },
     });
 
     const progressPercent = this.analyzeProjectProgress(stages).progressPercent;
 
-    await tx.project.update({
+    await db.project.update({
       where: { id: projectId },
       data: { progressPercent },
     });
@@ -1425,12 +1422,12 @@ export class ProjectsService {
   }
 
   private async replaceProjectStageTasks(
-    tx: PrismaTransaction,
+    db: PrismaProjectWriteClient,
     tenantId: string,
     projectStageId: string,
     tasks: Array<{ title: string; completed: boolean }>,
   ) {
-    await tx.projectStageTask.deleteMany({
+    await db.projectStageTask.deleteMany({
       where: { tenantId, projectStageId },
     });
 
@@ -1438,7 +1435,7 @@ export class ProjectsService {
       return;
     }
 
-    await tx.projectStageTask.createMany({
+    await db.projectStageTask.createMany({
       data: tasks.map((task, index) => ({
         tenantId,
         projectStageId,
