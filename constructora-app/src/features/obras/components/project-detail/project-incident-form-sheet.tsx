@@ -27,6 +27,7 @@ import type {
 } from '../../api/types';
 
 const NONE_OPTION_VALUE = '__none__';
+const NONE_CATEGORY_OPTION_VALUE = '__none_category__';
 
 const CATEGORY_OPTIONS: Array<{ value: ProjectIncidentCategory; label: string }> = [
   { value: 'WEATHER', label: 'Clima / Lluvia' },
@@ -43,7 +44,20 @@ const CATEGORY_OPTIONS: Array<{ value: ProjectIncidentCategory; label: string }>
 const incidentSchema = z.object({
   incidentDate: z.string().min(1, 'La fecha es requerida'),
   reason: z.string().min(1, 'El motivo es requerido').max(500),
-  category: z.enum(['WEATHER', 'SUPPLIER', 'CLIENT', 'PERMIT', 'MATERIALS', 'WORKFORCE', 'TECHNICAL', 'SAFETY', 'OTHER']).optional().or(z.literal('')),
+  category: z
+    .enum([
+      'WEATHER',
+      'SUPPLIER',
+      'CLIENT',
+      'PERMIT',
+      'MATERIALS',
+      'WORKFORCE',
+      'TECHNICAL',
+      'SAFETY',
+      'OTHER',
+    ])
+    .optional()
+    .or(z.literal(NONE_CATEGORY_OPTION_VALUE)),
   projectStageId: z.string().optional(),
   delayDays: z.number().int().min(0),
   delayHours: z.number().int().min(0).max(23),
@@ -56,7 +70,7 @@ function toIncidentFormValues(incident?: ProjectIncident): IncidentFormValues {
   return {
     incidentDate: incident?.incidentDate ? incident.incidentDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
     reason: incident?.reason ?? '',
-    category: incident?.category ?? '',
+    category: incident?.category ?? NONE_CATEGORY_OPTION_VALUE,
     projectStageId: incident?.projectStageId ?? NONE_OPTION_VALUE,
     delayDays: incident?.delayDays ?? 0,
     delayHours: incident?.delayHours ?? 0,
@@ -98,7 +112,10 @@ export function ProjectIncidentFormSheet({
         projectId,
         incidentDate: value.incidentDate,
         reason: value.reason,
-        category: (value.category as ProjectIncidentCategory) || null,
+        category:
+          value.category && value.category !== NONE_CATEGORY_OPTION_VALUE
+            ? (value.category as ProjectIncidentCategory)
+            : null,
         projectStageId: resolvedStageId,
         delayDays: value.delayDays,
         delayHours: value.delayHours,
@@ -139,7 +156,7 @@ export function ProjectIncidentFormSheet({
   ];
 
   const categoryOptions = [
-    { value: '', label: 'Sin categoría' },
+    { value: NONE_CATEGORY_OPTION_VALUE, label: 'Sin categoría' },
     ...CATEGORY_OPTIONS,
   ];
 
