@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,6 +21,7 @@ import { expensesQueryOptions } from '@/features/gastos/api/queries';
 import {
   deleteProjectIncidentMutation,
   deleteProjectIncomeMutation,
+  exportProjectBudgetMutation,
   updateProjectMutation,
 } from '../../api/mutations';
 import { projectQueryOptions } from '../../api/queries';
@@ -52,6 +54,7 @@ interface ProjectDetailProps {
 }
 
 export function ProjectDetail({ projectId }: ProjectDetailProps) {
+  const router = useRouter();
   const { data: project } = useSuspenseQuery(projectQueryOptions(projectId));
   const { data: expenses } = useSuspenseQuery(expensesQueryOptions({ projectId, take: 100 }));
 
@@ -67,6 +70,7 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
 
   const deleteIncome = useMutation(deleteProjectIncomeMutation);
   const deleteIncident = useMutation(deleteProjectIncidentMutation);
+  const exportBudget = useMutation(exportProjectBudgetMutation);
   const updateProject = useMutation(updateProjectMutation);
 
   function handleProjectStatusChange(status: string) {
@@ -110,6 +114,27 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       toast.success('Contratiempo eliminado');
     } catch {
       toast.error('No se pudo eliminar el contratiempo');
+    }
+  }
+
+  async function handleExportBudget() {
+    if (!project.clientId) {
+      toast.error('La obra debe tener un cliente vinculado antes de exportar un presupuesto');
+      return;
+    }
+
+    try {
+      const result = await exportBudget.mutateAsync({ id: projectId });
+      toast.success(
+        result.skippedStagesCount > 0
+          ? `Presupuesto creado con ${result.exportedStagesCount} etapas exportadas`
+          : 'Presupuesto creado a partir de las etapas',
+      );
+      router.push(`/dashboard/presupuestos?edit=${encodeURIComponent(result.budgetId)}`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'No se pudo exportar las etapas a presupuesto',
+      );
     }
   }
 
@@ -320,7 +345,19 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
           </TabsContent>
 
           {/* Etapas tab */}
-          <TabsContent value='etapas'>
+          <TabsContent value='etapas' className='space-y-4'>
+            <div className='flex flex-wrap items-center justify-end gap-2'>
+              <Button
+                size='sm'
+                variant='outline'
+                onClick={() => void handleExportBudget()}
+                isLoading={exportBudget.isPending}
+              >
+                <Icons.download className='h-4 w-4 sm:mr-2' />
+                <span className='hidden sm:inline'>Exportar etapas a presupuesto</span>
+                <span className='sm:hidden'>Exportar</span>
+              </Button>
+            </div>
             <ErrorBoundary>
               <Suspense fallback={<StagesListSkeleton />}>
                 <StagesList projectId={projectId} />

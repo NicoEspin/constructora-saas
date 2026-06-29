@@ -483,9 +483,9 @@ describe('Project stages (e2e)', () => {
 
     expect(weightedProject.status).toBe(200);
     expect(weightedProject.body.progressPercent).toBe(50);
-    expect(weightedProject.body.summary.alerts.map((item: { code: string }) => item.code)).toContain(
-      'PARTIAL_STAGE_WEIGHTS',
-    );
+    expect(
+      weightedProject.body.summary.alerts.map((item: { code: string }) => item.code),
+    ).toContain('PARTIAL_STAGE_WEIGHTS');
 
     const removeWeightsA = await request(app.getHttpServer())
       .patch(`/api/projects/${project.id}/stages/${stageA.body.id}`)
@@ -565,14 +565,12 @@ describe('Project stages (e2e)', () => {
     ]);
     expect(createdProjectStages.body[0].projectTemplateStageId).toBe(templateStageOne.id);
     expect(createdProjectStages.body[1].projectTemplateStageId).toBe(templateStageTwo.id);
-    expect(createdProjectStages.body[0].tasks.map((task: { title: string }) => task.title)).toEqual([
-      'Replanteo',
-      'Pozo',
-    ]);
-    expect(createdProjectStages.body[1].tasks.map((task: { title: string }) => task.title)).toEqual([
-      'Columnas',
-      'Vigas',
-    ]);
+    expect(createdProjectStages.body[0].tasks.map((task: { title: string }) => task.title)).toEqual(
+      ['Replanteo', 'Pozo'],
+    );
+    expect(createdProjectStages.body[1].tasks.map((task: { title: string }) => task.title)).toEqual(
+      ['Columnas', 'Vigas'],
+    );
 
     const convertResponse = await request(app.getHttpServer())
       .post(`/api/projects/from-budget/${approvedBudget.id}`)
@@ -591,14 +589,119 @@ describe('Project stages (e2e)', () => {
     expect(convertedProjectStages.body).toHaveLength(2);
     expect(convertedProjectStages.body[0].projectTemplateStageId).toBe(templateStageOne.id);
     expect(convertedProjectStages.body[1].projectTemplateStageId).toBe(templateStageTwo.id);
-    expect(convertedProjectStages.body[0].tasks.map((task: { title: string }) => task.title)).toEqual([
-      'Replanteo',
-      'Pozo',
-    ]);
-    expect(convertedProjectStages.body[1].tasks.map((task: { title: string }) => task.title)).toEqual([
-      'Columnas',
-      'Vigas',
-    ]);
+    expect(
+      convertedProjectStages.body[0].tasks.map((task: { title: string }) => task.title),
+    ).toEqual(['Replanteo', 'Pozo']);
+    expect(
+      convertedProjectStages.body[1].tasks.map((task: { title: string }) => task.title),
+    ).toEqual(['Columnas', 'Vigas']);
+  });
+
+  it('should export configured project stages into draft labor budget items and allow repeated exports', async () => {
+    const owner = await createUserWithTenant(
+      'stages-export@example.com',
+      'Tenant One',
+      'stages-export',
+    );
+    const client = await createClientForTenant(owner.tenant.id, 'Cliente Exportacion');
+    const project = await createProjectForTenant(owner.tenant.id, 'Obra Exportable', {
+      clientId: client.id,
+    });
+
+    const configuredStageResponse = await request(app.getHttpServer())
+      .post(`/api/projects/${project.id}/stages`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .set('X-Tenant-ID', owner.tenant.id)
+      .send({
+        name: 'Albanileria',
+        description: 'Muros exteriores',
+        budgetQuantity: 25,
+        budgetUnit: 'M2',
+      });
+
+    expect(configuredStageResponse.status).toBe(201);
+    expect(configuredStageResponse.body.tasks).toEqual([]);
+    expect(configuredStageResponse.body.budgetQuantity).toBe('25');
+    expect(configuredStageResponse.body.budgetUnit).toBe('M2');
+
+    await prisma.projectStage.create({
+      data: {
+        tenantId: owner.tenant.id,
+        projectId: project.id,
+        name: 'Etapa legacy',
+        position: 2,
+        budgetQuantity: null,
+      },
+    });
+
+    const firstExportResponse = await request(app.getHttpServer())
+      .post(`/api/projects/${project.id}/export-budget`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .set('X-Tenant-ID', owner.tenant.id)
+      .send({});
+
+    expect(firstExportResponse.status).toBe(201);
+    expect(firstExportResponse.body.exportedStagesCount).toBe(1);
+    expect(firstExportResponse.body.skippedStagesCount).toBe(1);
+
+    const secondExportResponse = await request(app.getHttpServer())
+      .post(`/api/projects/${project.id}/export-budget`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .set('X-Tenant-ID', owner.tenant.id)
+      .send({});
+
+    expect(secondExportResponse.status).toBe(201);
+    expect(secondExportResponse.body.exportedStagesCount).toBe(1);
+
+    const exportedBudgets = await prisma.budget.findMany({
+      where: { tenantId: owner.tenant.id, projectId: project.id },
+      include: {
+        items: {
+          orderBy: { position: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(exportedBudgets).toHaveLength(2);
+    expect(exportedBudgets[0].status).toBe('DRAFT');
+    expect(exportedBudgets[0].clientId).toBe(client.id);
+    expect(exportedBudgets[0].items).toHaveLength(1);
+    expect(exportedBudgets[0].items[0].category).toBe('LABOR');
+    expect(exportedBudgets[0].items[0].name).toBe('Albanileria');
+    expect(exportedBudgets[0].items[0].description).toBe('Muros exteriores');
+    expect(exportedBudgets[0].items[0].quantity.toString()).toBe('25');
+    expect(exportedBudgets[0].items[0].unit).toBe('M2');
+    expect(exportedBudgets[0].items[0].unitPrice.toString()).toBe('0');
+    expect(exportedBudgets[0].items[0].subtotal.toString()).toBe('0');
+    expect(exportedBudgets[1].items).toHaveLength(1);
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { tenantId: owner.tenant.id, action: 'project.export-budget' },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    expect(auditLogs).toHaveLength(2);
+  });
+
+  it('should block budget export when the project has no linked client', async () => {
+    const owner = await createUserWithTenant(
+      'stages-export-no-client@example.com',
+      'Tenant One',
+      'stages-export-no-client',
+    );
+    const project = await createProjectForTenant(owner.tenant.id, 'Obra Sin Cliente');
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/projects/${project.id}/export-budget`)
+      .set('Authorization', `Bearer ${owner.token}`)
+      .set('X-Tenant-ID', owner.tenant.id)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe(
+      'La obra debe tener un cliente vinculado para exportar un presupuesto',
+    );
   });
 
   it('should reject stage references that are outside the tenant or incompatible with the project template', async () => {

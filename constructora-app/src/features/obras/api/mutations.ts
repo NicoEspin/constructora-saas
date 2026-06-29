@@ -1,10 +1,12 @@
 import { mutationOptions } from '@tanstack/react-query';
 import { getQueryClient } from '@/lib/query-client';
+import { budgetKeys } from '@/features/presupuestos/api/queries';
 import {
   applyProjectTemplate,
   createProject,
   createProjectIncident,
   createProjectIncome,
+  exportProjectBudget,
   updateProject,
   updateProjectIncident,
   updateProjectIncome,
@@ -17,6 +19,7 @@ import {
 } from './service';
 import { projectKeys } from './queries';
 import type {
+  ExportProjectBudgetResponse,
   ProjectDetail,
   ProjectIncident,
   ProjectIncidentMutationPayload,
@@ -73,6 +76,15 @@ export const applyProjectTemplateMutation = mutationOptions({
     const qc = getQueryClient();
     qc.setQueryData(projectKeys.detail(project.id), project);
     qc.invalidateQueries({ queryKey: projectKeys.stages(project.id) });
+  },
+});
+
+export const exportProjectBudgetMutation = mutationOptions({
+  mutationFn: ({ id }: { id: string }) => exportProjectBudget(id),
+  onSuccess: (_result: ExportProjectBudgetResponse, { id }: { id: string }) => {
+    const qc = getQueryClient();
+    qc.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    qc.invalidateQueries({ queryKey: budgetKeys.all });
   },
 });
 

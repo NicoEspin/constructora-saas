@@ -5,7 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  BudgetItemCategory,
   BudgetStatus,
+  MeasurementUnit,
   ExpenseStatus,
   Prisma,
   ProjectIncomeStatus,
@@ -195,6 +197,12 @@ type ProgressAnalysis = {
   warnings: SummaryMessage[];
 };
 
+type ExportBudgetResult = {
+  budgetId: string;
+  exportedStagesCount: number;
+  skippedStagesCount: number;
+};
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -356,6 +364,8 @@ export class ProjectsService {
           managerUserId: dto.managerUserId ?? null,
           name: this.requireTrimmedString(dto.name, 'Project stage name is required'),
           description: this.normalizeOptionalString(dto.description),
+          budgetQuantity: this.normalizeStageBudgetQuantity(dto.budgetQuantity),
+          budgetUnit: dto.budgetUnit ?? MeasurementUnit.M2,
           status,
           progressPercent,
           weightPercent: dto.weightPercent ?? null,
@@ -470,6 +480,10 @@ export class ProjectsService {
           ...(dto.description !== undefined
             ? { description: this.normalizeOptionalString(dto.description) }
             : {}),
+          ...(dto.budgetQuantity !== undefined
+            ? { budgetQuantity: this.normalizeStageBudgetQuantity(dto.budgetQuantity) }
+            : {}),
+          ...(dto.budgetUnit !== undefined ? { budgetUnit: dto.budgetUnit } : {}),
           status,
           progressPercent,
           ...(dto.weightPercent !== undefined ? { weightPercent: dto.weightPercent ?? null } : {}),
@@ -660,6 +674,113 @@ export class ProjectsService {
     return {
       project: await this.findProjectOrThrow(tenantId, id),
       createdStagesCount,
+    };
+  }
+
+  async exportBudget(
+    tenantId: string,
+    id: string,
+    actorUserId: string,
+  ): Promise<ExportBudgetResult> {
+    this.assertTenantId(tenantId);
+
+    const project = await this.prisma.project.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        name: true,
+        clientId: true,
+      },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    if (!project.clientId) {
+      throw new BadRequestException(
+        'La obra debe tener un cliente vinculado para exportar un presupuesto',
+      );
+    }
+
+    const clientId = project.clientId;
+
+    const stages = await this.prisma.projectStage.findMany({
+      where: { tenantId, projectId: id },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        budgetQuantity: true,
+        budgetUnit: true,
+      },
+    });
+
+    const exportableStages = stages.filter(
+      (stage) => stage.budgetQuantity !== null && stage.budgetQuantity.greaterThan(0),
+    );
+
+    if (exportableStages.length === 0) {
+      throw new BadRequestException(
+        'La obra no tiene etapas con cantidad y unidad configuradas para exportar',
+      );
+    }
+
+    const skippedStagesCount = stages.length - exportableStages.length;
+
+    const budget = await this.prisma.$transaction(async (tx) => {
+      const createdBudget = await tx.budget.create({
+        data: {
+          tenantId,
+          clientId,
+          projectId: project.id,
+          name: this.buildExportedBudgetName(project.name),
+          status: BudgetStatus.DRAFT,
+          subtotalAmount: new Prisma.Decimal(0),
+          discountAmount: new Prisma.Decimal(0),
+          taxAmount: new Prisma.Decimal(0),
+          profitAmount: new Prisma.Decimal(0),
+          totalAmount: new Prisma.Decimal(0),
+        },
+        select: { id: true },
+      });
+
+      await tx.budgetItem.createMany({
+        data: exportableStages.map((stage, index) => ({
+          tenantId,
+          budgetId: createdBudget.id,
+          category: BudgetItemCategory.LABOR,
+          name: stage.name,
+          description: this.normalizeOptionalString(stage.description),
+          quantity: stage.budgetQuantity ?? new Prisma.Decimal(0),
+          unit: stage.budgetUnit ?? MeasurementUnit.M2,
+          unitPrice: new Prisma.Decimal(0),
+          subtotal: new Prisma.Decimal(0),
+          position: index + 1,
+        })),
+      });
+
+      return createdBudget;
+    });
+
+    await this.auditService.log({
+      action: 'project.export-budget',
+      entity: 'budget',
+      entityId: budget.id,
+      tenantId,
+      userId: actorUserId,
+      metadata: {
+        projectId: project.id,
+        exportedStagesCount: exportableStages.length,
+        skippedStagesCount,
+      },
+    });
+
+    return {
+      budgetId: budget.id,
+      exportedStagesCount: exportableStages.length,
+      skippedStagesCount,
     };
   }
 
@@ -1113,6 +1234,7 @@ export class ProjectsService {
         tenantId: true,
         projectTemplateId: true,
         name: true,
+        clientId: true,
         startDate: true,
         actualStartDate: true,
         estimatedEndDate: true,
@@ -1277,6 +1399,8 @@ export class ProjectsService {
           managerUserId: null,
           name: stage.name,
           description: stage.description,
+          budgetQuantity: null,
+          budgetUnit: MeasurementUnit.M2,
           status: ProjectStageStatus.PENDING,
           progressPercent: 0,
           weightPercent: stage.weightPercent,
@@ -1616,6 +1740,21 @@ export class ProjectsService {
   private normalizeOptionalString(value?: string | null) {
     const normalized = value?.trim();
     return normalized ? normalized : null;
+  }
+
+  private normalizeStageBudgetQuantity(value?: number | null) {
+    if (value == null) {
+      return new Prisma.Decimal(1).toDecimalPlaces(2);
+    }
+
+    return new Prisma.Decimal(value).toDecimalPlaces(2);
+  }
+
+  private buildExportedBudgetName(projectName: string) {
+    return this.requireTrimmedString(`Presupuesto ${projectName}`, 'Budget name is required').slice(
+      0,
+      160,
+    );
   }
 
   private normalizePercent(value: number) {

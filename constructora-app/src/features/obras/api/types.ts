@@ -1,4 +1,5 @@
 import type { Attachment } from '@/features/attachments/api/types';
+import type { MeasurementUnit } from '@/features/presupuestos/api/types';
 
 export type ProjectStatus = 'PENDING' | 'ACTIVE' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
 export type ProjectStageStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'PAUSED';
@@ -235,6 +236,8 @@ export interface ProjectStage {
   projectId: string;
   name: string;
   description: string | null;
+  budgetQuantity: string | null;
+  budgetUnit: MeasurementUnit;
   status: ProjectStageStatus;
   progressPercent: number;
   weightPercent: number | null;
@@ -256,6 +259,8 @@ export interface ProjectStage {
 export interface StageMutationPayload {
   name: string;
   description?: string;
+  budgetQuantity?: number;
+  budgetUnit?: MeasurementUnit;
   status?: ProjectStageStatus;
   weightPercent?: number;
   position?: number;
@@ -297,4 +302,10 @@ export interface ProjectIncomeMonthlySummary {
   currentMonthTotal: string;
   previousMonthTotal: string;
   percentChange: number | null;
+}
+
+export interface ExportProjectBudgetResponse {
+  budgetId: string;
+  exportedStagesCount: number;
+  skippedStagesCount: number;
 }

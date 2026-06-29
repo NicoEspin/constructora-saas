@@ -79,6 +79,19 @@ export class ProjectsController {
     return this.projectsService.applyTemplate(tenantId, id, dto, user.sub);
   }
 
+  @Post(':id/export-budget')
+  @ApiOperation({ summary: 'Export project stages into a new draft budget for the current tenant' })
+  @ApiResponse({ status: 201, description: 'Project stages exported into a draft budget' })
+  @ApiResponse({ status: 400, description: 'Project cannot be exported into a budget' })
+  @ApiResponse({ status: 404, description: 'Project not found' })
+  async exportBudget(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: { sub: string },
+    @Param('id') id: string,
+  ) {
+    return this.projectsService.exportBudget(tenantId, id, user.sub);
+  }
+
   @Get(':projectId/stages')
   @ApiOperation({ summary: 'List stages for a project in the current tenant' })
   @ApiResponse({ status: 200, description: 'Project stages list' })

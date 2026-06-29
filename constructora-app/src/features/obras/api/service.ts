@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/api-client';
 import type {
   ApplyProjectTemplatePayload,
   ApplyProjectTemplateResponse,
+  ExportProjectBudgetResponse,
   ProjectDetail,
   ProjectFilters,
   ProjectIncident,
@@ -54,6 +55,12 @@ export async function applyProjectTemplate(
   return apiClient<ApplyProjectTemplateResponse>(`/projects/${id}/apply-template`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+export async function exportProjectBudget(id: string): Promise<ExportProjectBudgetResponse> {
+  return apiClient<ExportProjectBudgetResponse>(`/projects/${id}/export-budget`, {
+    method: 'POST',
   });
 }
 

@@ -5,6 +5,7 @@ import { ConstructionItemCombobox } from '@/components/construction-item-combobo
 import { StageTasksEditor } from '@/components/stage-tasks-editor';
 import { Button } from '@/components/ui/button';
 import { Field, FieldError, FieldLabel } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Icons } from '@/components/icons';
 import {
@@ -26,12 +27,15 @@ import {
   STAGE_STATUS_OPTIONS,
   type StageFormValues,
 } from '../../schemas/project';
+import { MEASUREMENT_UNIT_OPTIONS } from '@/features/presupuestos/schemas/budget';
 import type { ProjectStage, StageMutationPayload } from '../../api/types';
 
 function toStageFormValues(stage?: ProjectStage): StageFormValues {
   return {
     name: stage?.name ?? '',
     description: stage?.description ?? '',
+    budgetQuantity: stage?.budgetQuantity ? Number(stage.budgetQuantity) : 1,
+    budgetUnit: stage?.budgetUnit ?? 'M2',
     status: stage?.status ?? 'PENDING',
     weightPercent: stage?.weightPercent ?? undefined,
     estimatedStartDate: stage?.estimatedStartDate ? stage.estimatedStartDate.slice(0, 10) : '',
@@ -63,6 +67,8 @@ export function StageFormSheet({ projectId, stage, open, onOpenChange }: StageFo
       const payload: StageMutationPayload = {
         name: value.name,
         description: value.description || undefined,
+        budgetQuantity: value.budgetQuantity,
+        budgetUnit: value.budgetUnit,
         status: value.status,
         weightPercent: value.weightPercent,
         estimatedStartDate: value.estimatedStartDate || undefined,
@@ -165,6 +171,39 @@ export function StageFormSheet({ projectId, stage, open, onOpenChange }: StageFo
                 options={STAGE_STATUS_OPTIONS}
                 placeholder='Seleccioná el estado'
               />
+
+              <div className='grid grid-cols-2 gap-4'>
+                <form.AppField name='budgetQuantity'>
+                  {(field) => (
+                    <Field data-invalid={field.state.meta.isTouched && !field.state.meta.isValid}>
+                      <FieldLabel>Cantidad para presupuesto</FieldLabel>
+                      <Input
+                        type='number'
+                        min='0.01'
+                        step='0.01'
+                        value={String(field.state.value ?? '')}
+                        onChange={(event) => {
+                          const next = event.target.valueAsNumber;
+                          if (!Number.isNaN(next)) {
+                            field.handleChange(next);
+                          }
+                        }}
+                        onBlur={field.handleBlur}
+                        aria-invalid={field.state.meta.isTouched && !field.state.meta.isValid}
+                      />
+                      <FieldError errors={field.state.meta.errors} />
+                    </Field>
+                  )}
+                </form.AppField>
+
+                <FormSelectField
+                  name='budgetUnit'
+                  label='Unidad para presupuesto'
+                  required
+                  options={MEASUREMENT_UNIT_OPTIONS}
+                  placeholder='Seleccioná la unidad'
+                />
+              </div>
 
               <Field>
                 <FieldLabel>Progreso automático</FieldLabel>

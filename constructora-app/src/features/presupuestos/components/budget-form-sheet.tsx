@@ -710,21 +710,22 @@ export function BudgetFormSheet({
 export function BudgetFormSheetTrigger() {
   const [params, setParams] = useQueryStates({
     create: parseAsString,
+    edit: parseAsString,
     projectId: parseAsString,
   });
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (params.create === '1') {
+    if (params.create === '1' || !!params.edit) {
       setOpen(true);
     }
-  }, [params.create]);
+  }, [params.create, params.edit]);
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
 
-    if (!nextOpen && params.create === '1') {
-      void setParams({ create: null });
+    if (!nextOpen && (params.create === '1' || params.edit)) {
+      void setParams({ create: null, edit: null });
     }
   }
 
@@ -735,6 +736,7 @@ export function BudgetFormSheetTrigger() {
         Nuevo presupuesto
       </Button>
       <BudgetFormSheet
+        budgetId={params.edit ?? undefined}
         open={open}
         onOpenChange={handleOpenChange}
         initialProjectId={params.projectId ?? undefined}

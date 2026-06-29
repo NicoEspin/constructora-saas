@@ -17,6 +17,7 @@ import type { ProjectStage, ProjectStageStatus } from '../../api/types';
 import { STAGE_STATUS_LABELS } from '../../schemas/project';
 import { StageFormSheet } from './stage-form-sheet';
 import { cn } from '@/lib/utils';
+import { MEASUREMENT_UNIT_LABELS } from '@/features/presupuestos/schemas/budget';
 
 function stageStatusClassName(status: ProjectStageStatus): string {
   switch (status) {
@@ -166,6 +167,11 @@ export function StageCard({ stage, dragHandleProps }: StageCardProps) {
             </div>
             <Progress value={stage.progressPercent} className='h-2' />
             <p className='text-[11px] text-muted-foreground'>Calculado automáticamente según tareas completadas.</p>
+          </div>
+
+          <div className='rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground'>
+            Exportación a presupuesto: {stage.budgetQuantity ?? '—'}{' '}
+            {MEASUREMENT_UNIT_LABELS[stage.budgetUnit]}
           </div>
 
           {stage.tasks.length > 0 ? (

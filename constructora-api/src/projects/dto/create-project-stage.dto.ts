@@ -1,12 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { ProjectStageStatus } from '@prisma/client';
+import { MeasurementUnit, ProjectStageStatus } from '@prisma/client';
 import {
   IsArray,
   IsDate,
   IsEnum,
   IsInt,
   IsOptional,
+  IsNumber,
   IsString,
   IsUUID,
   Max,
@@ -28,12 +29,35 @@ export class CreateProjectStageDto {
   @MaxLength(2000)
   description?: string | null;
 
+  @ApiPropertyOptional({
+    example: 25,
+    description: 'Budget export quantity used when converting the stage into a labor item',
+    default: 1,
+  })
+  @IsOptional()
+  @Transform(({ value }) => (value == null ? value : Number(value)))
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  budgetQuantity?: number;
+
+  @ApiPropertyOptional({
+    enum: MeasurementUnit,
+    description: 'Budget export unit used when converting the stage into a labor item',
+    default: MeasurementUnit.M2,
+  })
+  @IsOptional()
+  @IsEnum(MeasurementUnit)
+  budgetUnit?: MeasurementUnit;
+
   @ApiPropertyOptional({ enum: ProjectStageStatus, description: 'Stage status' })
   @IsOptional()
   @IsEnum(ProjectStageStatus)
   status?: ProjectStageStatus;
 
-  @ApiPropertyOptional({ example: 40, description: 'Optional stage progress percent from 0 to 100' })
+  @ApiPropertyOptional({
+    example: 40,
+    description: 'Optional stage progress percent from 0 to 100',
+  })
   @IsOptional()
   @IsInt()
   @Min(0)
