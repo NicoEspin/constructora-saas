@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format, isBefore, parseISO, startOfDay } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -38,12 +38,43 @@ function formatDate(iso: string): string {
   return format(parseISO(iso.slice(0, 10)), 'dd/MM/yyyy');
 }
 
+function getStageHighlight(stage: ProjectStage) {
+  if (stage.status === 'COMPLETED') {
+    return {
+      cardClassName: 'border-blue-300 dark:border-blue-800',
+      dateClassName: 'text-blue-700 dark:text-blue-400',
+    };
+  }
+
+  if (!stage.estimatedStartDate || !stage.estimatedEndDate) {
+    return {
+      cardClassName: 'border-yellow-300 dark:border-yellow-800',
+      dateClassName: 'text-yellow-700 dark:text-yellow-400',
+    };
+  }
+
+  const estimatedEndDate = parseISO(stage.estimatedEndDate.slice(0, 10));
+
+  if (isBefore(estimatedEndDate, startOfDay(new Date()))) {
+    return {
+      cardClassName: 'border-red-300 dark:border-red-800',
+      dateClassName: 'text-red-700 dark:text-red-400',
+    };
+  }
+
+  return {
+    cardClassName: '',
+    dateClassName: 'text-muted-foreground',
+  };
+}
+
 interface StageCardProps {
   stage: ProjectStage;
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 }
 
 export function StageCard({ stage, dragHandleProps }: StageCardProps) {
+  const stageHighlight = getStageHighlight(stage);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [startDateOpen, setStartDateOpen] = useState(false);
@@ -140,7 +171,7 @@ export function StageCard({ stage, dragHandleProps }: StageCardProps) {
         onOpenChange={setEditOpen}
       />
 
-      <div className='bg-card border rounded-lg overflow-hidden min-w-0'>
+      <div className={cn('bg-card border rounded-lg overflow-hidden min-w-0', stageHighlight.cardClassName)}>
         {/* Drag handle */}
         <div
           {...dragHandleProps}
@@ -215,11 +246,18 @@ export function StageCard({ stage, dragHandleProps }: StageCardProps) {
           >
             <PopoverTrigger asChild>
               <button className='flex w-full items-center justify-between rounded-md border bg-muted/20 px-3 py-2 text-left transition-colors hover:text-foreground'>
-                <div className='flex items-baseline gap-1.5'>
-                  <span className='text-base font-semibold text-foreground'>
-                    {stage.budgetQuantity ?? '—'}
+                <div className='flex flex-col gap-1'>
+                  <span className='text-[11px] font-medium uppercase tracking-wide text-muted-foreground'>
+                    Cantidad y unidad
                   </span>
-                  <span className='text-xs text-muted-foreground'>{MEASUREMENT_UNIT_LABELS[stage.budgetUnit]}</span>
+                  <div className='flex items-baseline gap-1.5'>
+                    <span className='text-base font-semibold text-foreground'>
+                      {stage.budgetQuantity ?? '—'}
+                    </span>
+                    <span className='text-xs text-muted-foreground'>
+                      {MEASUREMENT_UNIT_LABELS[stage.budgetUnit]}
+                    </span>
+                  </div>
                 </div>
                 <Icons.edit className='h-3.5 w-3.5 text-green-600 dark:text-green-400' />
               </button>
@@ -288,10 +326,10 @@ export function StageCard({ stage, dragHandleProps }: StageCardProps) {
             </div>
           )}
 
-          <div className='flex flex-wrap gap-3 text-xs text-muted-foreground'>
+          <div className={cn('flex flex-wrap gap-3 text-xs', stageHighlight.dateClassName)}>
             <Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
               <PopoverTrigger asChild>
-                <button className='flex items-center gap-1 rounded hover:text-foreground transition-colors'>
+                <button className={cn('flex items-center gap-1 rounded transition-colors hover:text-foreground', stageHighlight.dateClassName)}>
                   <Icons.calendar className='h-3 w-3' />
                   <span>
                     {stage.estimatedStartDate
@@ -325,7 +363,7 @@ export function StageCard({ stage, dragHandleProps }: StageCardProps) {
 
             <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
               <PopoverTrigger asChild>
-                <button className='flex items-center gap-1 rounded hover:text-foreground transition-colors'>
+                <button className={cn('flex items-center gap-1 rounded transition-colors hover:text-foreground', stageHighlight.dateClassName)}>
                   <Icons.calendar className='h-3 w-3' />
                   <span>
                     {stage.estimatedEndDate
